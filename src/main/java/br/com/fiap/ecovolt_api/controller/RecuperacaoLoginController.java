@@ -1,8 +1,14 @@
 package br.com.fiap.ecovolt_api.controller;
 
 import br.com.fiap.ecovolt_api.dao.RecuperacaoLoginDao;
+import br.com.fiap.ecovolt_api.dto.AtualizacaoRecuperacaoLoginDto;
+import br.com.fiap.ecovolt_api.dto.CadastroRecuperacaoLoginDto;
+import br.com.fiap.ecovolt_api.dto.DetalhesRecuperacaoLoginDto;
+import br.com.fiap.ecovolt_api.model.LoginDiario;
 import br.com.fiap.ecovolt_api.model.RecuperacaoLogin;
-
+import br.com.fiap.ecovolt_api.model.Usuario;
+import jakarta.validation.Valid;
+import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -14,55 +20,81 @@ import java.util.List;
 @RequestMapping("/recuperacao-login")
 public class RecuperacaoLoginController {
 
-    private final RecuperacaoLoginDao recuperacaoLoginDao;
+    private final RecuperacaoLoginDao dao;
+    private final ModelMapper mapper;
 
-    public RecuperacaoLoginController(
-            RecuperacaoLoginDao recuperacaoLoginDao) {
-        this.recuperacaoLoginDao = recuperacaoLoginDao;
+    public RecuperacaoLoginController(RecuperacaoLoginDao dao,
+                                      ModelMapper mapper) {
+        this.dao = dao;
+        this.mapper = mapper;
     }
 
     @GetMapping
-    public ResponseEntity<List<RecuperacaoLogin>> listar() {
-        return ResponseEntity.ok(recuperacaoLoginDao.listar());
+    public ResponseEntity<List<DetalhesRecuperacaoLoginDto>> listar() {
+        List<DetalhesRecuperacaoLoginDto> lista = dao.listar().stream()
+                .map(this::toDto).toList();
+        return ResponseEntity.ok(lista);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<RecuperacaoLogin> buscar(
+    public ResponseEntity<DetalhesRecuperacaoLoginDto> buscar(
             @PathVariable Long id) {
-        return ResponseEntity.ok(recuperacaoLoginDao.buscar(id));
+        return ResponseEntity.ok(toDto(dao.buscar(id)));
     }
 
     @PostMapping
-    public ResponseEntity<RecuperacaoLogin> inserir(
-            @RequestBody RecuperacaoLogin recuperacao) {
+    public ResponseEntity<DetalhesRecuperacaoLoginDto> inserir(
+            @Valid @RequestBody CadastroRecuperacaoLoginDto dto) {
 
-        RecuperacaoLogin recuperacaoInserida =
-                recuperacaoLoginDao.inserir(recuperacao);
+        RecuperacaoLogin rec = mapper.map(dto, RecuperacaoLogin.class);
+        rec.setUsuario(criarUsuario(dto.getIdUsuario()));
+        rec.setLogin(criarLogin(dto.getIdLogin()));
 
-        URI location = ServletUriComponentsBuilder
-                .fromCurrentRequest()
-                .path("/{id}")
-                .buildAndExpand(recuperacaoInserida.getId())
-                .toUri();
+        RecuperacaoLogin inserida = dao.inserir(rec);
 
-        return ResponseEntity
-                .created(location)
-                .body(recuperacaoInserida);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}").buildAndExpand(inserida.getId()).toUri();
+
+        return ResponseEntity.created(location).body(toDto(inserida));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<RecuperacaoLogin> atualizar(
+    public ResponseEntity<DetalhesRecuperacaoLoginDto> atualizar(
             @PathVariable Long id,
-            @RequestBody RecuperacaoLogin recuperacao) {
+            @Valid @RequestBody AtualizacaoRecuperacaoLoginDto dto) {
 
-        return ResponseEntity.ok(
-                recuperacaoLoginDao.atualizar(id, recuperacao)
-        );
+        RecuperacaoLogin rec = mapper.map(dto, RecuperacaoLogin.class);
+        rec.setUsuario(criarUsuario(dto.getIdUsuario()));
+        rec.setLogin(criarLogin(dto.getIdLogin()));
+
+        return ResponseEntity.ok(toDto(dao.atualizar(id, rec)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletar(@PathVariable Long id) {
-        recuperacaoLoginDao.deletar(id);
+        dao.deletar(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private DetalhesRecuperacaoLoginDto toDto(RecuperacaoLogin r) {
+        DetalhesRecuperacaoLoginDto dto = mapper.map(r,
+                DetalhesRecuperacaoLoginDto.class);
+        if (r.getUsuario() != null) dto.setIdUsuario(r.getUsuario().getId());
+        if (r.getLogin() != null) dto.setIdLogin(r.getLogin().getId());
+        return dto;
+    }
+
+    private Usuario criarUsuario(Long id) {
+        if (id == null) return null;
+        Usuario u = new Usuario();
+        u.setId(id);
+        return u;
+    }
+
+    private LoginDiario criarLogin(Long id) {
+        if (id == null) return null;
+        LoginDiario l = new LoginDiario();
+        l.setId(id);
+        return l;
     }
 }

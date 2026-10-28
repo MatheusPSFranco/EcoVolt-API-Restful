@@ -1,7 +1,13 @@
 package br.com.fiap.ecovolt_api.controller;
 
 import br.com.fiap.ecovolt_api.dao.ValidacaoDao;
+import br.com.fiap.ecovolt_api.dto.AtualizacaoValidacaoDto;
+import br.com.fiap.ecovolt_api.dto.CadastroValidacaoDto;
+import br.com.fiap.ecovolt_api.dto.DetalhesValidacaoDto;
+import br.com.fiap.ecovolt_api.model.EnvioAcao;
 import br.com.fiap.ecovolt_api.model.Validacao;
+import jakarta.validation.Valid;
+import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -15,71 +21,76 @@ import java.util.List;
 public class ValidacaoController {
 
     private final ValidacaoDao dao;
+    private final ModelMapper mapper;
 
-    public ValidacaoController(ValidacaoDao dao) {
+    public ValidacaoController(ValidacaoDao dao, ModelMapper mapper) {
         this.dao = dao;
+        this.mapper = mapper;
     }
 
-    // Lista todas as validações.
     @GetMapping
-    public List<Validacao> listar() throws SQLException {
-        return dao.listar();
+    public List<DetalhesValidacaoDto> listar() throws SQLException {
+        return dao.listar().stream()
+                .map(this::toDto).toList();
     }
 
-    // Busca uma validação pelo ID.
     @GetMapping("/{id}")
-    public ResponseEntity<Validacao> buscar(@PathVariable Long id)
-            throws SQLException {
-
-        Validacao validacao = dao.buscar(id);
-
-        return ResponseEntity.ok(validacao);
+    public ResponseEntity<DetalhesValidacaoDto> buscar(
+            @PathVariable Long id) throws SQLException {
+        return ResponseEntity.ok(toDto(dao.buscar(id)));
     }
 
-    // Cadastra uma nova validação.
     @PostMapping
-    public ResponseEntity<Validacao> adicionar(
-            @RequestBody Validacao validacao,
-            UriComponentsBuilder uriBuilder
-    ) throws SQLException {
+    public ResponseEntity<DetalhesValidacaoDto> adicionar(
+            @Valid @RequestBody CadastroValidacaoDto dto,
+            UriComponentsBuilder uriBuilder) throws SQLException {
+
+        Validacao validacao = mapper.map(dto, Validacao.class);
+        validacao.setEnvioAcao(criarEnvioAcao(dto.getIdEnvioAcao()));
 
         dao.inserir(validacao);
+        Validacao criada = dao.buscar(validacao.getId());
 
-        Validacao validacaoCriada = dao.buscar(validacao.getId());
+        URI uri = uriBuilder.path("/validacao/{id}")
+                .buildAndExpand(criada.getId()).toUri();
 
-        URI uri = uriBuilder
-                .path("/validacao/{id}")
-                .buildAndExpand(validacaoCriada.getId())
-                .toUri();
-
-        return ResponseEntity
-                .created(uri)
-                .body(validacaoCriada);
+        return ResponseEntity.created(uri).body(toDto(criada));
     }
 
-    // Atualiza uma validação existente.
     @PutMapping("/{id}")
-    public ResponseEntity<Validacao> atualizar(
+    public ResponseEntity<DetalhesValidacaoDto> atualizar(
             @PathVariable Long id,
-            @RequestBody Validacao validacao
-    ) throws SQLException {
+            @Valid @RequestBody AtualizacaoValidacaoDto dto)
+            throws SQLException {
 
+        Validacao validacao = mapper.map(dto, Validacao.class);
         validacao.setId(id);
+        validacao.setEnvioAcao(criarEnvioAcao(dto.getIdEnvioAcao()));
 
         dao.atualizar(validacao);
 
-        Validacao validacaoAtualizada = dao.buscar(id);
-
-        return ResponseEntity.ok(validacaoAtualizada);
+        return ResponseEntity.ok(toDto(dao.buscar(id)));
     }
 
-    // Exclui uma validação pelo ID.
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletar(@PathVariable Long id)
             throws SQLException {
-
         dao.deletar(id);
-
         return ResponseEntity.noContent().build();
+    }
+
+    private DetalhesValidacaoDto toDto(Validacao v) {
+        DetalhesValidacaoDto dto = mapper.map(v,
+                DetalhesValidacaoDto.class);
+        if (v.getEnvioAcao() != null)
+            dto.setIdEnvioAcao(v.getEnvioAcao().getId());
+        return dto;
+    }
+
+    private EnvioAcao criarEnvioAcao(Long id) {
+        if (id == null) return null;
+        EnvioAcao e = new EnvioAcao();
+        e.setId(id);
+        return e;
     }
 }

@@ -1,7 +1,13 @@
 package br.com.fiap.ecovolt_api.controller;
 
 import br.com.fiap.ecovolt_api.dao.InteracaoDao;
+import br.com.fiap.ecovolt_api.dto.AtualizacaoInteracaoDto;
+import br.com.fiap.ecovolt_api.dto.CadastroInteracaoDto;
+import br.com.fiap.ecovolt_api.dto.DetalhesInteracaoDto;
 import br.com.fiap.ecovolt_api.model.Interacao;
+import br.com.fiap.ecovolt_api.model.Usuario;
+import jakarta.validation.Valid;
+import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -15,71 +21,75 @@ import java.util.List;
 public class InteracaoController {
 
     private final InteracaoDao dao;
+    private final ModelMapper mapper;
 
-    public InteracaoController(InteracaoDao dao) {
+    public InteracaoController(InteracaoDao dao, ModelMapper mapper) {
         this.dao = dao;
+        this.mapper = mapper;
     }
 
-    // Lista todas as interações.
     @GetMapping
-    public List<Interacao> listar() throws SQLException {
-        return dao.listar();
+    public List<DetalhesInteracaoDto> listar() throws SQLException {
+        return dao.listar().stream()
+                .map(this::toDto).toList();
     }
 
-    // Busca uma interação pelo ID.
     @GetMapping("/{id}")
-    public ResponseEntity<Interacao> buscar(@PathVariable Long id)
-            throws SQLException {
-
-        Interacao interacao = dao.buscar(id);
-
-        return ResponseEntity.ok(interacao);
+    public ResponseEntity<DetalhesInteracaoDto> buscar(
+            @PathVariable Long id) throws SQLException {
+        return ResponseEntity.ok(toDto(dao.buscar(id)));
     }
 
-    // Cadastra uma nova interação.
     @PostMapping
-    public ResponseEntity<Interacao> adicionar(
-            @RequestBody Interacao interacao,
-            UriComponentsBuilder uriBuilder
-    ) throws SQLException {
+    public ResponseEntity<DetalhesInteracaoDto> adicionar(
+            @Valid @RequestBody CadastroInteracaoDto dto,
+            UriComponentsBuilder uriBuilder) throws SQLException {
+
+        Interacao interacao = mapper.map(dto, Interacao.class);
+        interacao.setUsuario(criarUsuario(dto.getIdUsuario()));
 
         dao.inserir(interacao);
+        Interacao criada = dao.buscar(interacao.getId());
 
-        Interacao interacaoCriada = dao.buscar(interacao.getId());
+        URI uri = uriBuilder.path("/interacao/{id}")
+                .buildAndExpand(criada.getId()).toUri();
 
-        URI uri = uriBuilder
-                .path("/interacao/{id}")
-                .buildAndExpand(interacaoCriada.getId())
-                .toUri();
-
-        return ResponseEntity
-                .created(uri)
-                .body(interacaoCriada);
+        return ResponseEntity.created(uri).body(toDto(criada));
     }
 
-    // Atualiza uma interação existente.
     @PutMapping("/{id}")
-    public ResponseEntity<Interacao> atualizar(
+    public ResponseEntity<DetalhesInteracaoDto> atualizar(
             @PathVariable Long id,
-            @RequestBody Interacao interacao
-    ) throws SQLException {
+            @Valid @RequestBody AtualizacaoInteracaoDto dto)
+            throws SQLException {
 
+        Interacao interacao = mapper.map(dto, Interacao.class);
         interacao.setId(id);
+        interacao.setUsuario(criarUsuario(dto.getIdUsuario()));
 
         dao.atualizar(interacao);
 
-        Interacao interacaoAtualizada = dao.buscar(id);
-
-        return ResponseEntity.ok(interacaoAtualizada);
+        return ResponseEntity.ok(toDto(dao.buscar(id)));
     }
 
-    // Exclui uma interação pelo ID.
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletar(@PathVariable Long id)
             throws SQLException {
-
         dao.deletar(id);
-
         return ResponseEntity.noContent().build();
+    }
+
+    private DetalhesInteracaoDto toDto(Interacao i) {
+        DetalhesInteracaoDto dto = mapper.map(i,
+                DetalhesInteracaoDto.class);
+        if (i.getUsuario() != null) dto.setIdUsuario(i.getUsuario().getId());
+        return dto;
+    }
+
+    private Usuario criarUsuario(Long id) {
+        if (id == null) return null;
+        Usuario u = new Usuario();
+        u.setId(id);
+        return u;
     }
 }
